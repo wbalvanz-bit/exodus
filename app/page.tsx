@@ -125,14 +125,16 @@ export default function ExodusCreator() {
   
   // Auth & Cloud State
   const [user, setUser] = useState<any>(null);
-  
-  // ADD YOUR GOOGLE EMAIL HERE:
-  const GM_EMAIL = "wbalvanz@gmail.com"; 
-  const isGM = user?.email === GM_EMAIL;
-  const [savedCharacters, setSavedCharacters] = useState<any[]>([]); // Player's own sheets
-  const [allCampaignCharacters, setAllCampaignCharacters] = useState<any[]>([]); // GM View sheets
+  const [loginEmail, setLoginEmail] = useState("");
+  const [isSendingLink, setIsSendingLink] = useState(false);
+  const [savedCharacters, setSavedCharacters] = useState<any[]>([]); 
+  const [allCampaignCharacters, setAllCampaignCharacters] = useState<any[]>([]); 
   const [currentCharacterId, setCurrentCharacterId] = useState<string | null>(null);
   const [cloudStatus, setCloudStatus] = useState("");
+
+  // REPLACE THIS WITH YOUR ACTUAL EMAIL TO UNLOCK THE GM DASHBOARD
+  const GM_EMAIL = "your.email@gmail.com"; 
+  const isGM = user?.email === GM_EMAIL;
 
   // Character State
   const [name, setName] = useState("");
@@ -210,7 +212,7 @@ export default function ExodusCreator() {
 
   const calculatedOverloadCap = Math.max(1, modifiers.int + profBonus);
 
-  // Auto-Update Mech Stats based on Chassis & Level
+  // Auto-Update Mech Stats
   useEffect(() => {
     if (charClass === 'cataphract') {
       if (mechChassis === 'Assault') {
@@ -246,8 +248,29 @@ export default function ExodusCreator() {
     return () => subscription.unsubscribe();
   }, []);
 
-  const loginWithGoogle = async () => {
-    await supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: window.location.origin } });
+  // NEW MAGIC LINK LOGIN LOGIC
+  const loginWithMagicLink = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!loginEmail) return alert("Please enter an email address.");
+    
+    setIsSendingLink(true);
+    setCloudStatus("Sending Secure Link...");
+
+    const { error } = await supabase.auth.signInWithOtp({
+      email: loginEmail,
+      options: { emailRedirectTo: window.location.origin }
+    });
+
+    if (error) {
+      alert(error.message);
+      setCloudStatus("");
+    } else {
+      setLoginEmail("");
+      setCloudStatus("Magic link sent! Check your inbox to log in.");
+      // Keeps the status up for a while so they know to go check their email
+      setTimeout(() => setCloudStatus(""), 10000); 
+    }
+    setIsSendingLink(false);
   };
 
   const logout = async () => {
@@ -255,23 +278,20 @@ export default function ExodusCreator() {
     setCurrentCharacterId(null);
   };
 
-  // Fetch only the logged-in player's characters
   const fetchCloudCharacters = async (userId: string) => {
     const { data, error } = await supabase.from('characters').select('*').eq('user_id', userId).order('updated_at', { ascending: false });
     if (!error) setSavedCharacters(data || []);
   };
 
-  // Fetch ALL characters for the GM View (Bypasses RLS due to our new policy)
   const fetchAllCampaignCharacters = async () => {
     const { data, error } = await supabase.from('characters').select('*').order('updated_at', { ascending: false });
     if (!error) setAllCampaignCharacters(data || []);
   };
 
   const saveToCloud = async () => {
-    if (!user) return alert("Please sign in with Google first!");
+    if (!user) return alert("Please sign in first!");
     setCloudStatus("Saving to Cloud...");
     
-    // Add dynamically calculated armor and maxHP into the payload for the GM dashboard to easily read
     const characterPayload = {
       name, level, origin, charClass, subclassIndex, proficientSkills,
       baseAge, appearance, physicalBuild, inventory, augments, remnants,
@@ -287,7 +307,6 @@ export default function ExodusCreator() {
       character_data: characterPayload
     };
 
-    // If we have an ID, we UPSERT (Update) instead of creating a duplicate
     if (currentCharacterId) {
       payload.id = currentCharacterId;
     }
@@ -299,7 +318,7 @@ export default function ExodusCreator() {
       setCloudStatus("Save failed.");
     } else {
       setCloudStatus("Successfully saved!");
-      if (data && data.length > 0) setCurrentCharacterId(data[0].id); // Lock onto this ID for future saves
+      if (data && data.length > 0) setCurrentCharacterId(data[0].id);
       fetchCloudCharacters(user.id);
       fetchAllCampaignCharacters();
       setTimeout(() => setCloudStatus(""), 3000);
@@ -316,7 +335,7 @@ export default function ExodusCreator() {
 
   const loadCloudCharacter = (charRecord: any) => {
     const d = charRecord.character_data;
-    setCurrentCharacterId(charRecord.id); // Set the active ID so we overwrite it later
+    setCurrentCharacterId(charRecord.id);
     setName(d.name || "");
     setLevel(d.level || 1);
     setOrigin(d.origin || "archeologist");
@@ -660,7 +679,7 @@ export default function ExodusCreator() {
           </div>
 
           <div className="flex flex-col md:flex-row items-center gap-3">
-          {/* View Mode Toggle */}
+            {/* View Mode Toggle */}
             {user && isGM && (
               <div className="flex bg-slate-900 rounded-lg p-1 border border-slate-700">
                 <button 
@@ -694,9 +713,23 @@ export default function ExodusCreator() {
                   <button onClick={logout} className="text-slate-400 hover:text-red-400 font-bold">Logout</button>
                 </div>
               ) : (
-                <button onClick={loginWithGoogle} className="bg-cyan-600 hover:bg-cyan-500 text-black font-bold px-3 py-1.5 rounded uppercase transition-colors flex items-center gap-1">
-                  Sign In with Google to Save
-                </button>
+                <form onSubmit={loginWithMagicLink} className="flex items-center gap-2">
+                  <input 
+                    type="email" 
+                    value={loginEmail} 
+                    onChange={e => setLoginEmail(e.target.value)} 
+                    placeholder="Enter email..." 
+                    className="bg-black border border-slate-700 rounded p-1.5 text-white focus:outline-none focus:border-cyan-500 w-40"
+                    required
+                  />
+                  <button 
+                    type="submit" 
+                    disabled={isSendingLink}
+                    className="bg-cyan-600 hover:bg-cyan-500 disabled:bg-cyan-800 disabled:text-cyan-600 text-black font-bold px-3 py-1.5 rounded uppercase transition-colors flex items-center gap-1"
+                  >
+                    {isSendingLink ? "Sending..." : "Send Magic Link"}
+                  </button>
+                </form>
               )}
             </div>
           </div>
