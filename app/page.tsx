@@ -125,6 +125,10 @@ export default function ExodusCreator() {
   
   // Auth & Cloud State
   const [user, setUser] = useState<any>(null);
+  
+  // ADD YOUR GOOGLE EMAIL HERE:
+  const GM_EMAIL = "wbalvanz@gmail.com"; 
+  const isGM = user?.email === GM_EMAIL;
   const [savedCharacters, setSavedCharacters] = useState<any[]>([]); // Player's own sheets
   const [allCampaignCharacters, setAllCampaignCharacters] = useState<any[]>([]); // GM View sheets
   const [currentCharacterId, setCurrentCharacterId] = useState<string | null>(null);
@@ -656,8 +660,8 @@ export default function ExodusCreator() {
           </div>
 
           <div className="flex flex-col md:flex-row items-center gap-3">
-            {/* View Mode Toggle */}
-            {user && (
+          {/* View Mode Toggle */}
+            {user && isGM && (
               <div className="flex bg-slate-900 rounded-lg p-1 border border-slate-700">
                 <button 
                   onClick={() => setViewMode("player")} 
